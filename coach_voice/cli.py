@@ -2,6 +2,7 @@
 Usage:
   python -m coach_voice enroll REFERENCE_VIDEO --segment 11.0-12.1 --segment 20.9-25.0 \
       --name "Coach Rica" --profile profiles/coach_rica
+  python -m coach_voice ui --profile profiles/coach_rica      # web page for sampling + training
   python -m coach_voice sample VIDEO --profile profiles/coach_rica --out samples/
   python -m coach_voice enroll VIDEO --pick 3,5,8 --sample-dir samples/VIDEO_STEM --profile profiles/coach_rica --add
   python -m coach_voice transcribe VIDEO [VIDEO ...] --profile profiles/coach_rica --out transcripts/
@@ -12,9 +13,7 @@ from pathlib import Path
 
 from .audio import load_audio, slice_audio
 from .output import write_review, write_srt, write_txt
-from .speaker import VoiceProfile, embed
-
-DEFAULT_THRESHOLD = 0.18
+from .speaker import DEFAULT_THRESHOLD, VoiceProfile, embed
 # Long reference segments are split into chunks so the profile captures more variation.
 ENROLL_CHUNK = 3.0
 
@@ -137,6 +136,17 @@ def sample(args: argparse.Namespace) -> None:
           file=sys.stderr)
 
 
+def ui(args: argparse.Namespace) -> None:
+    import uvicorn
+
+    from .webapp.server import create_app
+
+    names = [n.strip() for n in args.names.split(",") if n.strip()]
+    app = create_app(args.profile, args.data, args.model, names, args.name)
+    print(f"\n  Open http://{args.host}:{args.port} in your browser\n", file=sys.stderr)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="coach_voice", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -162,6 +172,17 @@ def main(argv: list[str] | None = None) -> None:
     m.add_argument("--model", default="medium.en")
     m.add_argument("--language", default="en")
     m.set_defaults(func=sample)
+
+    u = sub.add_parser("ui", help="web page to add videos, label lines and train the profile live")
+    u.add_argument("--profile", default="profiles/coach_rica")
+    u.add_argument("--name", default="Coach Rica", help="speaker name for a new profile")
+    u.add_argument("--data", default="data", help="where processed videos are cached")
+    u.add_argument("--names", default="Vikram,Joshua,Ryan,Zoey,Dash,Kendra",
+                   help="comma-separated player names to help Whisper spell them")
+    u.add_argument("--model", default="medium.en")
+    u.add_argument("--host", default="127.0.0.1")
+    u.add_argument("--port", type=int, default=8000)
+    u.set_defaults(func=ui)
 
     t = sub.add_parser("transcribe", help="transcribe only the enrolled speaker in one or more videos")
     t.add_argument("videos", nargs="+")

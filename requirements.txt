@@ -5,3 +5,6 @@ torchaudio
 soundfile
 numpy
 imageio-ffmpeg  # bundled ffmpeg, used if ffmpeg is not on PATH
+fastapi
+uvicorn
+python-multipart

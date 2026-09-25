@@ -9,8 +9,6 @@ from .speaker import VoiceProfile, embed
 # Segments shorter than this are padded (centred) before embedding: very short
 # clips give unreliable speaker embeddings.
 MIN_EMBED_WINDOW = 1.5
-# Scores in [threshold - UNCERTAIN_MARGIN, threshold) are reported as "uncertain".
-UNCERTAIN_MARGIN = 0.06
 # Whisper segments can span several speakers; re-split on pauses between words so each
 # piece is (usually) one voice.
 SPLIT_GAP = 0.5
@@ -24,13 +22,25 @@ class Segment:
     text: str
     score: float | None = None
     label: str = ""
+    negative_score: float | None = None
 
 
-def recognize(audio: np.ndarray, model_name: str, names: list[str], language: str = "en") -> list[Segment]:
-    from faster_whisper import WhisperModel
+_models: dict = {}
 
-    model = WhisperModel(model_name, device="auto", compute_type="int8")
-    segments, _ = model.transcribe(
+
+def whisper_model(name: str):
+    if name not in _models:
+        from faster_whisper import WhisperModel
+
+        _models[name] = WhisperModel(name, device="auto", compute_type="int8")
+    return _models[name]
+
+
+def recognize(audio: np.ndarray, model_name: str, names: list[str], language: str = "en",
+              on_progress=None) -> list[Segment]:
+    """Transcribe and split into single-voice-ish segments. on_progress(fraction) is
+    called as recognition advances through the audio."""
+    segments, info = whisper_model(model_name).transcribe(
         audio,
         language=language,
         vad_filter=True,
@@ -41,7 +51,12 @@ def recognize(audio: np.ndarray, model_name: str, names: list[str], language: st
         # Whisper mishears uncommon names on noisy field audio (e.g. "Vikram" -> "Big Grub").
         hotwords=" ".join(names) if names else None,
     )
-    return split_on_pauses([w for s in segments for w in s.words])
+    words = []
+    for s in segments:
+        words += s.words
+        if on_progress and info.duration:
+            on_progress(min(1.0, s.end / info.duration))
+    return split_on_pauses(words)
 
 
 def split_on_pauses(words) -> list[Segment]:
@@ -61,17 +76,12 @@ def _join(words) -> Segment:
     return Segment(words[0].start, words[-1].end, "".join(w.word for w in words).strip())
 
 
+def embed_segment(audio: np.ndarray, seg: Segment) -> np.ndarray | None:
+    mid = (seg.start + seg.end) / 2
+    half = max((seg.end - seg.start) / 2 + 0.15, MIN_EMBED_WINDOW / 2)
+    return embed(slice_audio(audio, max(0.0, mid - half), mid + half))
+
+
 def score_segments(audio: np.ndarray, segments: list[Segment], profile: VoiceProfile) -> None:
     for seg in segments:
-        mid = (seg.start + seg.end) / 2
-        half = max((seg.end - seg.start) / 2 + 0.15, MIN_EMBED_WINDOW / 2)
-        emb = embed(slice_audio(audio, max(0.0, mid - half), mid + half))
-        seg.score = None if emb is None else profile.score(emb)
-        if seg.score is None:
-            seg.label = "uncertain"
-        elif seg.score >= profile.threshold:
-            seg.label = "match"
-        elif seg.score >= profile.threshold - UNCERTAIN_MARGIN:
-            seg.label = "uncertain"
-        else:
-            seg.label = "other"
+        seg.score, seg.negative_score, seg.label = profile.classify(embed_segment(audio, seg))

@@ -22,5 +22,6 @@
       "start": 20.9,
       "end": 25.0
     }
-  ]
+  ],
+  "auto_threshold": true
 }
