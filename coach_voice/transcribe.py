@@ -1,4 +1,5 @@
 """Speech recognition (faster-whisper) plus per-segment speaker matching against a VoiceProfile."""
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -13,6 +14,7 @@ MIN_EMBED_WINDOW = 1.5
 # piece is (usually) one voice.
 SPLIT_GAP = 0.5
 MAX_SEGMENT = 8.0
+CHUNK_SECONDS = 10
 
 
 @dataclass
@@ -26,6 +28,8 @@ class Segment:
 
 
 _models: dict = {}
+# Whisper's stock phrases for noise (learned from video outros); never real coaching.
+HALLUCINATIONS = re.compile(r"^(thank you|thanks)( so much)?( for watching)?[.! ]*$|for watching", re.I)
 
 
 def whisper_model(name: str):
@@ -40,14 +44,18 @@ def recognize(audio: np.ndarray, model_name: str, names: list[str], language: st
               on_progress=None) -> list[Segment]:
     """Transcribe and split into single-voice-ish segments. on_progress(fraction) is
     called as recognition advances through the audio."""
-    segments, info = whisper_model(model_name).transcribe(
+    from faster_whisper import BatchedInferencePipeline
+
+    # Speech is found with VAD and each short chunk is decoded independently. Whisper's
+    # normal sequential decoding over 30 s windows can abandon the rest of a window on
+    # noisy field audio, silently dropping whole passages of speech.
+    segments, info = BatchedInferencePipeline(whisper_model(model_name)).transcribe(
         audio,
         language=language,
-        vad_filter=True,
+        batch_size=8,
+        chunk_length=CHUNK_SECONDS,
         word_timestamps=True,
-        # Carrying context across segments makes Whisper loop on repetitive shouting.
         condition_on_previous_text=False,
-        hallucination_silence_threshold=2.0,
         # Whisper mishears uncommon names on noisy field audio (e.g. "Vikram" -> "Big Grub").
         hotwords=" ".join(names) if names else None,
     )
@@ -56,7 +64,7 @@ def recognize(audio: np.ndarray, model_name: str, names: list[str], language: st
         words += s.words
         if on_progress and info.duration:
             on_progress(min(1.0, s.end / info.duration))
-    return split_on_pauses(words)
+    return [s for s in split_on_pauses(words) if s.text and not HALLUCINATIONS.search(s.text)]
 
 
 def split_on_pauses(words) -> list[Segment]:

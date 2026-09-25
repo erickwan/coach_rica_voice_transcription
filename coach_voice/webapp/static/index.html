@@ -52,6 +52,7 @@
   --neutral: #74736d; --danger: #e66767; --focus: #3987e5;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--text);
@@ -87,7 +88,7 @@ h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacin
 .tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .field { display: flex; gap: 6px; }
 .field input[type=text] { flex: 1; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
-.btn { border: 1px solid var(--border); background: var(--surface); border-radius: 7px; padding: 6px 11px; white-space: nowrap; }
+.btn { color: var(--text); text-decoration: none; border: 1px solid var(--border); background: var(--surface); border-radius: 7px; padding: 6px 11px; white-space: nowrap; }
 .btn:hover { background: var(--surface-2); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { filter: brightness(1.07); }
@@ -307,6 +308,7 @@ svg.strip circle.sel { stroke: var(--text); stroke-width: 2; }
 <script>
 const $ = s => document.querySelector(s);
 const state = { videos: [], profile: null, current: null, segments: [], sel: null, filter: 'review', sort: 'useful', stopAt: null };
+const fmtDur = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
 const fmt = t => { const m = Math.floor(t / 60), s = (t % 60).toFixed(1).padStart(4, '0'); return `${m}:${s}`; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const PLAY = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z"/></svg>';
@@ -345,7 +347,7 @@ function renderVideos() {
   if (!state.videos.length) { ul.innerHTML = '<li class="hint">No videos yet.</li>'; return; }
   ul.innerHTML = state.videos.map(v => {
     const busy = v.status !== 'ready' && v.status !== 'error';
-    const meta = v.status === 'ready' ? `${fmt(v.duration || 0)} · ${v.labelled} labelled`
+    const meta = v.status === 'ready' ? `${fmtDur(v.duration || 0)} · ${v.labelled} labelled`
       : v.status === 'error' ? `<span style="color:var(--danger)">Error: ${esc(v.error || '')}</span>`
       : `${esc(v.status)}${v.progress ? ' · ' + Math.round(v.progress * 100) + '%' : ''}`;
     return `<li><button data-vid="${v.id}" aria-current="${v.id === state.current}">
@@ -446,7 +448,7 @@ function segRow(s) {
   const thr = state.profile.threshold, max = 0.8;
   const w = s.score == null ? 0 : Math.max(0, Math.min(1, s.score / max)) * 100;
   const disagree = s.label && ((s.label === 'coach') !== (s.predicted === 'match')) && s.label !== 'mixed';
-  const note = s.negative_score != null && s.negative_score > (s.score ?? 0) ? '<small>Sounds closer to a “not coach” sample</small>' : '';
+  const note = s.predicted === 'other' && s.score != null && s.score >= state.profile.threshold ? '<small>Sounds closer to a “not coach” sample</small>' : '';
   return `<li class="seg${s.i === state.sel ? ' sel' : ''}" data-i="${s.i}" aria-selected="${s.i === state.sel}">
     <span class="time num">${PLAY}${fmt(s.start)}</span>
     <span class="text">${esc(s.text) || '<i style="color:var(--text-3)">(no words)</i>'}${note}</span>

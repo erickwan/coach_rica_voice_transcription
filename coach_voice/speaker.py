@@ -41,6 +41,9 @@ def cosine(a: np.ndarray, b: np.ndarray) -> float:
 DEFAULT_THRESHOLD = 0.18
 # Scores in [threshold - UNCERTAIN_MARGIN, threshold) are reported as "uncertain".
 UNCERTAIN_MARGIN = 0.06
+# How much closer a segment must be to a "not the speaker" sample than to the nearest
+# speaker samples before it is rejected regardless of its score.
+NEGATIVE_MARGIN = 0.03
 
 
 def _top_mean(sims: list[float], k: int = 3) -> float:
@@ -81,6 +84,10 @@ class VoiceProfile:
         sims = [cosine(emb, c)] + [cosine(emb, e) for e in embs]
         return _top_mean(sims)
 
+    def nearest_score(self, emb: np.ndarray, exclude: int | None = None) -> float:
+        """Similarity to the closest speaker samples, comparable with negative_score."""
+        return _top_mean([cosine(emb, e) for i, e in enumerate(self.embeddings) if i != exclude], k=2)
+
     def negative_score(self, emb: np.ndarray, exclude: int | None = None) -> float | None:
         negs = [e for i, e in enumerate(self.negatives) if i != exclude]
         if not negs:
@@ -97,7 +104,7 @@ class VoiceProfile:
         neg = self.negative_score(emb, exclude=exclude_negative)
         if score is None:
             return None, neg, "uncertain"
-        if neg is not None and neg > score:
+        if neg is not None and neg > self.nearest_score(emb, exclude) + NEGATIVE_MARGIN:
             return score, neg, "other"
         if score >= self.threshold:
             return score, neg, "match"
