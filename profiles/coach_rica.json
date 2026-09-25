@@ -1,0 +1,26 @@
+{
+  "name": "Coach Rica",
+  "threshold": 0.18,
+  "sources": [
+    {
+      "file": "clip.mp4",
+      "start": 11.0,
+      "end": 12.1
+    },
+    {
+      "file": "clip.mp4",
+      "start": 14.1,
+      "end": 15.6
+    },
+    {
+      "file": "clip.mp4",
+      "start": 15.9,
+      "end": 16.9
+    },
+    {
+      "file": "clip.mp4",
+      "start": 20.9,
+      "end": 25.0
+    }
+  ]
+}

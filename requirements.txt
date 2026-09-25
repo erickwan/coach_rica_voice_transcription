@@ -1,0 +1,7 @@
+faster-whisper>=1.0
+speechbrain>=1.0
+torch
+torchaudio
+soundfile
+numpy
+imageio-ffmpeg  # bundled ffmpeg, used if ffmpeg is not on PATH

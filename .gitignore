@@ -1,0 +1,7 @@
+__pycache__/
+*.mp4
+*.mov
+*.m4a
+*.wav
+samples/
+transcripts/
